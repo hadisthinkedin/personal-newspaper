@@ -1,0 +1,65 @@
+name: Archive yesterday's edition
+
+on:
+  schedule:
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: archive-daily-edition
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download and validate yesterday's Detroit edition
+        env:
+          EDITION_URL: https://personal-newspaper-three.vercel.app/api/news?edition=yesterday
+        run: |
+          edition_date="$(TZ=America/Detroit date -d 'yesterday' +%F)"
+          curl --fail --retry 3 --retry-delay 5 --silent --show-error "$EDITION_URL" -o /tmp/edition.json
+          python3 - "$edition_date" <<'PY'
+          import json, sys
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          expected = sys.argv[1]
+          with open('/tmp/edition.json', encoding='utf-8') as handle:
+              edition = json.load(handle)
+          assert edition.get('editionDate') == expected, (edition.get('editionDate'), expected)
+          assert edition.get('editionKind') == 'yesterday'
+          assert isinstance(edition.get('articles'), list) and edition['articles'], 'empty archive'
+          for article in edition['articles']:
+              stamp = article.get('publishedAt')
+              assert stamp, f"undated article: {article.get('title')}"
+              day = datetime.fromisoformat(stamp.replace('Z', '+00:00')).astimezone(ZoneInfo('America/Detroit')).date().isoformat()
+              assert day == expected, (day, expected, article.get('title'))
+          with open('/tmp/edition.json', 'w', encoding='utf-8') as handle:
+              json.dump(edition, handle, ensure_ascii=False, separators=(',', ':'))
+              handle.write('\n')
+          PY
+          echo "EDITION_DATE=$edition_date" >> "$GITHUB_ENV"
+
+      - name: Commit archive on the archive-only branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git show-ref --verify --quiet refs/remotes/origin/editions; then
+            git switch --track origin/editions
+          else
+            git switch --orphan editions
+            git rm -rf .
+          fi
+          cp /tmp/edition.json "$EDITION_DATE.json"
+          git add "$EDITION_DATE.json"
+          git diff --cached --quiet && exit 0
+          git commit -m "Archive edition $EDITION_DATE"
+          git push origin editions
