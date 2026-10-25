@@ -280,6 +280,73 @@ footer {
   scroll-margin-top: 20px;
 }
 
+.upcoming-events {
+  padding-top: 48px;
+}
+.upcoming-events > header {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.upcoming-events > header .kicker {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font: 700 10px/1.4 var(--font-mono), monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.upcoming-events > header h2 {
+  margin: 0;
+  font: 600 clamp(32px, 3.8vw, 48px)/1 var(--font-editorial), Georgia, serif;
+  letter-spacing: -0.03em;
+}
+.upcoming-events > header .dek {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font: 400 15px/1.5 var(--font-editorial), Georgia, serif;
+  max-width: 70ch;
+}
+.event-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+.event-card {
+  border: 1px solid var(--line);
+  padding: 16px 18px;
+  background: var(--paper);
+}
+.event-card .event-when {
+  margin: 0;
+  font: 700 11px/1.4 var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.event-card h3 {
+  margin: 6px 0 10px;
+  font: 600 20px/1.2 var(--font-editorial), Georgia, serif;
+  letter-spacing: -0.015em;
+}
+.event-card h3 a {
+  color: var(--ink);
+  text-decoration: none;
+}
+.event-card h3 a:hover { text-decoration: underline; }
+.event-card .event-meta {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font: 400 13px/1.4 var(--font-sans), system-ui, sans-serif;
+}
+.event-card .event-summary {
+  margin: 0;
+  font: 400 14px/1.5 var(--font-editorial), Georgia, serif;
+  color: var(--ink);
+}
+
 .section-heading {
   display: grid;
   grid-template-columns: 180px 1fr auto;

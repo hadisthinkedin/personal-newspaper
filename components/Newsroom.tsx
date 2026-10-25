@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { excerpt, selectSectionArticles, SECTIONS, type Article, type Lens, type NewsPayload, type SectionId } from "@/lib/news";
+import type { UpcomingEvent } from "@/lib/events";
 import { buildPerspectiveClusters, consequenceFor, storyParagraphs, type PerspectiveCluster } from "@/lib/editorial";
 import { EntityText } from "@/components/EntityText";
 
@@ -171,6 +172,44 @@ function EditionSection({ section, articles }: { section: (typeof SECTIONS)[numb
   );
 }
 
+function formatEventDate(event: UpcomingEvent): string {
+  const source = event.startLocal ?? event.startIso;
+  if (!source) return "Date to be announced";
+  const date = new Date(/\dT\d/.test(source) ? source : `${source}Z`);
+  if (Number.isNaN(date.getTime())) return "Date to be announced";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function UpcomingEventsSection({ events }: { events: UpcomingEvent[] }) {
+  if (!events.length) return null;
+  return (
+    <section id="upcoming-events" className="upcoming-events">
+      <header>
+        <p className="kicker">Upcoming at Burgess Institute</p>
+        <h2>Events</h2>
+        <p className="dek">Innovate State panels, career fairs, and MSU founder programming hosted by the Burgess Institute for Entrepreneurship. Tickets open on Eventbrite.</p>
+      </header>
+      <ul className="event-list">
+        {events.map((event) => (
+          <li key={event.id} className="event-card">
+            <p className="event-when">{formatEventDate(event)}</p>
+            <h3><a href={event.url} rel="noopener noreferrer" target="_blank">{event.name}</a></h3>
+            <p className="event-meta">{[event.isOnline ? "Online" : event.venue, event.isFree ? "Free" : null].filter(Boolean).join(" · ")}</p>
+            {event.summary && <p className="event-summary">{event.summary}</p>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function Newsroom({ initial, editionDate, editionKind }: { initial: NewsPayload; editionDate: string; editionKind: "today" | "yesterday" }) {
   const [data, setData] = useState(initial);
   const [refreshing, setRefreshing] = useState(false);
@@ -222,6 +261,7 @@ export default function Newsroom({ initial, editionDate, editionKind }: { initia
           <Link href="/?edition=yesterday" aria-current={editionKind === "yesterday" ? "page" : undefined}>Yesterday’s Edition</Link>
         </nav>
         <nav className="section-nav" aria-label="Today’s sections">
+          {(data.upcomingEvents?.length ?? 0) > 0 && <a href="#upcoming-events">Upcoming Events</a>}
           {SECTIONS.map((section) => <a key={section.id} href={`#${section.id}`}>{section.label.replace(" Tracker", "")}</a>)}
         </nav>
       </header>
@@ -234,6 +274,8 @@ export default function Newsroom({ initial, editionDate, editionKind }: { initia
         </div>
 
         {error && <p className="refresh-error" role="status">{error}</p>}
+
+        <UpcomingEventsSection events={data.upcomingEvents ?? []} />
 
         {SECTIONS.map((section) => <EditionSection key={section.id} section={section} articles={grouped.get(section.id) ?? []} />)}
 

@@ -3,6 +3,35 @@ import type { Article } from "@/lib/news";
 
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+let nytCookieCache: { value: string | null; mtimeMs: number } | null = null;
+
+async function readNytCookie(): Promise<string | null> {
+  if (typeof window !== "undefined") return null;
+  try {
+    const [{ default: fs }, { default: path }] = await Promise.all([
+      import("node:fs"),
+      import("node:path"),
+    ]);
+    const cookiePath = path.resolve(process.cwd(), ".secrets/nyt-cookie-header.txt");
+    const stats = fs.statSync(cookiePath);
+    if (nytCookieCache && nytCookieCache.mtimeMs === stats.mtimeMs) return nytCookieCache.value;
+    const value = fs.readFileSync(cookiePath, "utf8").trim() || null;
+    nytCookieCache = { value, mtimeMs: stats.mtimeMs };
+    return value;
+  } catch {
+    nytCookieCache = { value: null, mtimeMs: 0 };
+    return null;
+  }
+}
+
+function isNytUrl(value: string): boolean {
+  try {
+    return /(^|\.)nytimes\.com$/i.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
 const GOOGLE_BATCH_URL = "https://news.google.com/_/DotsSplashUi/data/batchexecute";
 const GART_CONTEXT = [["X", "X", ["X", "X"], null, null, 1, 1, "US:en", null, 1, null, null, null, null, null, 0, 1], "X", "X", 1, [1, 1, 1], 1, 1, null, 0, 0, null, 0];
 
@@ -142,8 +171,12 @@ export async function enrichArticleContent(article: Article, fetcher: Fetcher = 
   try {
     const sourceUrl = article.viaAggregator ? await resolveGoogleNewsUrl(article.url, fetcher) : article.url;
     if (!sourceUrl) return article;
+    const nytCookie = isNytUrl(sourceUrl) ? await readNytCookie() : null;
     const requestOptions: RequestInit = {
-      headers: { "user-agent": "Mozilla/5.0 (compatible; TheDailyBread/2.0; +https://personal-newspaper-three.vercel.app)" },
+      headers: {
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        ...(nytCookie ? { cookie: nytCookie } : {}),
+      },
       signal: AbortSignal.timeout(8_000),
     };
     const response = await fetcher(sourceUrl, requestOptions);

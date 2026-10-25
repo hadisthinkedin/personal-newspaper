@@ -3,6 +3,7 @@ import Parser from "rss-parser";
 import sanitizeHtml from "sanitize-html";
 import { unstable_cache } from "next/cache";
 import { enrichArticleContent } from "@/lib/article-content";
+import { fetchBurgessEvents, filterFutureEvents, type UpcomingEvent } from "@/lib/events";
 
 export const SECTIONS = [
   { id: "global", label: "Global Headlines", dek: "The world’s consequential events, with wire facts followed by the emphases found in left- and right-leaning American coverage.", limit: 12 },
@@ -36,7 +37,7 @@ export type Article = {
   content?: string;
 };
 export type SourceHealth = { source: string; category: SectionId; ok: boolean; count: number; method: "direct" | "Google News"; error?: string };
-export type NewsPayload = { articles: Article[]; updatedAt: string; sources: SourceHealth[] };
+export type NewsPayload = { articles: Article[]; updatedAt: string; sources: SourceHealth[]; upcomingEvents: UpcomingEvent[] };
 export type FeedSource = { name: string; category: SectionId; url: string; lens: Lens; viaGoogle?: boolean; allowedPublishers?: string[] };
 type FeedItem = Parser.Item & Record<string, unknown>;
 type FeedResult = { source: string; category: SectionId; ok: boolean; articles: Article[]; method: "direct" | "Google News"; error?: string };
@@ -429,7 +430,7 @@ async function fetchFeed(source: FeedSource): Promise<FeedResult> {
   }
 }
 
-export function buildNewsPayload(results: FeedResult[], updatedAt = new Date()): NewsPayload {
+export function buildNewsPayload(results: FeedResult[], updatedAt = new Date(), upcomingEvents: UpcomingEvent[] = []): NewsPayload {
   return {
     articles: dedupeArticles(results.flatMap((result) => result.articles)),
     updatedAt: updatedAt.toISOString(),
@@ -441,11 +442,16 @@ export function buildNewsPayload(results: FeedResult[], updatedAt = new Date()):
       method: result.method,
       ...(!result.ok && result.error ? { error: result.error } : {}),
     })),
+    upcomingEvents,
   };
 }
 
 async function loadNews() {
-  const payload = buildNewsPayload(await Promise.all(FEEDS.map(fetchFeed)));
+  const [feedResults, events] = await Promise.all([
+    Promise.all(FEEDS.map(fetchFeed)),
+    fetchBurgessEvents().then((list) => filterFutureEvents(list)).catch(() => [] as UpcomingEvent[]),
+  ]);
+  const payload = buildNewsPayload(feedResults, new Date(), events);
   const selectedIds = new Set(
     SECTIONS.flatMap((section) => selectSectionArticles(payload.articles, section.id, section.limit)
       .slice(0, Math.min(section.limit, 3))

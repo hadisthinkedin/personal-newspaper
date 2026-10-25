@@ -9,6 +9,7 @@ import type { NewsPayload } from "@/lib/news";
 const payload: NewsPayload = {
   updatedAt: "2026-10-20T12:00:00.000Z",
   sources: [{ source: "AP World", category: "global", ok: true, count: 1, method: "Google News" }],
+  upcomingEvents: [],
   articles: [{
     id: "houthi",
     title: "Houthi rebels strike Yemen’s government forces, killing at least 53",

@@ -53,6 +53,7 @@ export async function loadArchivedEdition(editionDate: string, fetchArchive: Arc
       updatedAt: value.updatedAt,
       sources: value.sources,
       articles: filterEditionArticles(value.articles, editionDate),
+      upcomingEvents: Array.isArray(value.upcomingEvents) ? value.upcomingEvents : [],
     };
   } catch {
     return null;
