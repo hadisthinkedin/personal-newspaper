@@ -102,40 +102,56 @@ function oneSentenceQuote(value: string, words: number) {
 }
 
 function StoryHeadline({ article }: { article: Article }) {
+  return <h3><EntityText text={article.title} /></h3>;
+}
+
+/** Where the story text came from: the original publisher, or another outlet covering the same event. */
+function textCitation(article: Article) {
+  return article.contentSource && article.contentUrl
+    ? { name: article.contentSource, url: article.contentUrl }
+    : { name: article.source, url: article.sourceUrl ?? article.url };
+}
+
+function StoryByline({ article }: { article: Article }) {
   return (
-    <h3>
-      <a className="story-headline-link" href={article.sourceUrl ?? article.url} target="_blank" rel="noreferrer">{article.title}</a>
-    </h3>
+    <p>
+      {article.source} · {article.publishedAt ? formatEdition(article.publishedAt) : "Date unavailable"}
+      {article.contentSource ? ` · Full text via ${article.contentSource}` : ""}
+    </p>
   );
 }
 
 function ThinStory({ article }: { article: Article }) {
-  const sourceUrl = article.sourceUrl ?? article.url;
+  const citation = textCitation(article);
   const summary = article.content?.trim() || article.description.trim();
   return (
     <article className="story-article story-article--thin">
       <header className="story-heading">
-        <p>{article.source} · {article.publishedAt ? formatEdition(article.publishedAt) : "Date unavailable"}</p>
+        <StoryByline article={article} />
         <StoryHeadline article={article} />
       </header>
-      {summary && summary.toLowerCase() !== article.title.toLowerCase() && <p className="thin-summary"><EntityText text={excerpt(summary, 60)} /></p>}
-      <a className="read-full" href={sourceUrl} target="_blank" rel="noreferrer">Read the full story at {article.source} →</a>
+      <p className="thin-summary">
+        {summary && summary.toLowerCase() !== article.title.toLowerCase()
+          ? <><EntityText text={excerpt(summary, 80)} /> </>
+          : <>{article.source} has published only this headline so far, and no other outlet had a readable full report of it yet. </>}
+        <a className="source-citation" href={citation.url} target="_blank" rel="noreferrer">{citation.name}</a>
+      </p>
     </article>
   );
 }
 
 function ReportStory({ article }: { article: Article }) {
   const factualParagraphs = storyParagraphs(article);
-  const sourceUrl = article.sourceUrl ?? article.url;
+  const citation = textCitation(article);
   if (!factualParagraphs.length) return <ThinStory article={article} />;
   return (
     <article className="story-article">
       <header className="story-heading">
-        <p>{article.source} · {article.publishedAt ? formatEdition(article.publishedAt) : "Date unavailable"}</p>
+        <StoryByline article={article} />
         <StoryHeadline article={article} />
       </header>
       {factualParagraphs.map((paragraph, index) => (
-        <p key={`${article.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={sourceUrl} target="_blank" rel="noreferrer">{article.source}</a></p>
+        <p key={`${article.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={citation.url} target="_blank" rel="noreferrer">{citation.name}</a></p>
       ))}
       <p>{consequenceFor(article)} That is the central reason this item matters. The effects will depend on implementation, adoption, and the response of affected institutions. Further reporting should test the announcement or event against measurable outcomes.</p>
       <p>{EVIDENCE[article.lens]} The item was selected for consequence and source quality rather than because it appeared first in the feed. This edition does not treat publication by itself as proof of every claim. New documents, corrections, or additional reporting may change this assessment.</p>
@@ -147,18 +163,20 @@ function PerspectiveStory({ cluster }: { cluster: PerspectiveCluster }) {
   const { anchor, wireSupport, left, right } = cluster;
   const quote = (article: Article) => oneSentenceQuote(article.content || article.description || article.title, 22);
   const apArticle = [anchor, wireSupport].find((article) => article?.source === "AP News");
-  const factualParagraphs = storyParagraphs(anchor);
-  const anchorUrl = anchor.sourceUrl ?? anchor.url;
+  const fallbackText = [wireSupport, left, right].find((article) => article && storyParagraphs(article).length);
+  const textArticle = storyParagraphs(anchor).length ? anchor : fallbackText ?? anchor;
+  const factualParagraphs = storyParagraphs(textArticle);
+  const citation = textCitation(textArticle);
   if (!factualParagraphs.length && !wireSupport && !left && !right) return <ThinStory article={anchor} />;
   return (
     <article className="story-article story-article--headline">
       <header className="story-heading">
-        <p>{anchor.source} · {anchor.publishedAt ? formatEdition(anchor.publishedAt) : "Date unavailable"}</p>
+        <StoryByline article={textArticle === anchor ? anchor : { ...anchor, contentSource: citation.name }} />
         <StoryHeadline article={anchor} />
       </header>
       {factualParagraphs.length ? factualParagraphs.map((paragraph, index) => (
-        <p key={`${anchor.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={anchorUrl} target="_blank" rel="noreferrer">{anchor.source}</a></p>
-      )) : <p>{anchor.source} has not published more than a headline in its feed, and the full article could not be retrieved automatically. Open the headline above to read the complete report on the publisher’s site. The comparisons below come from related coverage of the same development. <a className="source-citation" href={anchorUrl} target="_blank" rel="noreferrer">Read the full report.</a></p>}
+        <p key={`${anchor.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={citation.url} target="_blank" rel="noreferrer">{citation.name}</a></p>
+      )) : <p>{anchor.source} has published only this headline so far, and no outlet had a readable full report of it yet, so the account below relies on the related coverage that is available. Details beyond these reports are not asserted here. <a className="source-citation" href={citation.url} target="_blank" rel="noreferrer">{citation.name}</a></p>}
       <p>{consequenceFor(anchor)} This consequence, not feed position, is why the story ranks among the leading reports. The eventual effects will depend on implementation and the response of affected governments, institutions, or communities. Follow-up reporting should compare stated intentions with observable results.</p>
       {wireSupport && <p>A second wire account from <a className="source-citation" href={wireSupport.sourceUrl ?? wireSupport.url} target="_blank" rel="noreferrer">{wireSupport.source}</a> reports, <q><EntityText text={quote(wireSupport)} /></q>. The overlap strengthens confidence in the core event. The accounts may still differ in timing, emphasis, or available evidence. Contested details should be checked against both reports and later updates.</p>}
       {left && <p>In closely related coverage, <a className="source-citation" href={left.sourceUrl ?? left.url} target="_blank" rel="noreferrer">{left.source}</a> emphasizes, <q><EntityText text={quote(left)} /></q>. That framing shows which consequences or constituencies the outlet places near the center of the story. It remains an interpretation rather than a substitute for documents or direct evidence. Its emphasis should be compared with the baseline report.</p>}
@@ -299,7 +317,7 @@ export default function Newsroom({ initial, editionDate, editionKind }: { initia
         <div className="editor-note" aria-labelledby="editor-note-heading">
           <p className="kicker">Editor’s Note</p>
           <h2 id="editor-note-heading">One Page. The Whole Day.</h2>
-          <p>Each desk ranks candidate reports for consequence, source quality, and corroboration instead of publishing the first feed item. Every selected story receives its own headline and three-to-nine-paragraph article, with four-to-six complete sentences in each paragraph and AP and Reuters checked for headline significance where applicable.</p>
+          <p>Each desk ranks candidate reports for consequence, source quality, and corroboration instead of publishing the first feed item. Every selected story is carried in full inside the edition, with its own headline and a three-to-nine-paragraph article, so sources appear only as citations, with four-to-six complete sentences in each paragraph and AP and Reuters checked for headline significance where applicable.</p>
         </div>
 
         {error && <p className="refresh-error" role="status">{error}</p>}

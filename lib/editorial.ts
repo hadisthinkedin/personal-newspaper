@@ -63,7 +63,7 @@ export function storyParagraphs(article: Article): string[] {
     .filter((sentence) => sentence.length >= 30
       && /[.!?][”"')\]]*$/.test(sentence)
       && sentence.toLowerCase() !== article.title.toLowerCase())
-    .slice(0, 24);
+    .slice(0, 42);
   if (sentences.length < 4) return [];
 
   let usableCount = sentences.length;

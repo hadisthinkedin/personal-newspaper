@@ -36,6 +36,9 @@ export type Article = {
   viaAggregator: boolean;
   sourceUrl?: string;
   content?: string;
+  /** Set when the story text was read from another outlet's report of the same event. */
+  contentSource?: string;
+  contentUrl?: string;
 };
 export type SourceHealth = { source: string; category: SectionId; ok: boolean; count: number; method: "direct" | "Google News"; error?: string };
 export type NewsPayload = { articles: Article[]; updatedAt: string; sources: SourceHealth[]; upcomingEvents: UpcomingEvent[] };
@@ -431,6 +434,7 @@ export function qualifies(article: Article) {
   const text = `${article.title} ${article.description}`;
   if (article.category === "global" || article.category === "national") {
     if (article.lens === "wire" && WIRE_MEDIA_CAPTION.test(article.title)) return false;
+    if (/\/practical-law|\/legal\/(?:legalindustry|government)\/?$/i.test(article.sourceUrl ?? "") || /^(?:careers in law|gc agenda)\b/i.test(article.title)) return false;
     if (article.lens === "wire" && (article.title.match(NON_ENGLISH_WIRE_WORD)?.length ?? 0) >= 3) return false;
     return !/\b(NFL|NBA|MLB|NHL|touchdown|quarterback|playoffs?|tournament|final score|defeats?|beats?|season opener)\b/i.test(text);
   }
@@ -528,7 +532,7 @@ async function loadNews(editionDate: string) {
 
 const getNewsCached = unstable_cache(
   async (editionDate: string) => loadNews(editionDate),
-  ["daily-bread-news-v4"],
+  ["daily-bread-news-v8"],
   { revalidate: 900, tags: ["news"] },
 );
 

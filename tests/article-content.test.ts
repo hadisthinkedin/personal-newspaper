@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { enrichArticleContent, extractArticleText } from "@/lib/article-content";
+import { enrichArticleContent, extractArticleText, findAlternateCoverage, parseGoogleNewsCandidates } from "@/lib/article-content";
 import { storyParagraphs } from "@/lib/editorial";
 import type { Article } from "@/lib/news";
 
@@ -108,5 +108,47 @@ describe("linked article content", () => {
 
     expect(counts.length).toBeGreaterThan(0);
     expect(counts.every((count) => count >= 4 && count <= 6)).toBe(true);
+  });
+});
+
+describe("alternate coverage for paywalled stories", () => {
+  const reuters: Article = {
+    id: "elsayed",
+    title: "US Senate candidate El-Sayed wants Democratic rival to stay away, source says",
+    url: "https://www.reuters.com/world/us/elsayed",
+    source: "Reuters",
+    category: "abdul",
+    publishedAt: "2026-10-31T12:00:00.000Z",
+    description: "",
+    image: null,
+    lens: "tracker",
+    viaAggregator: true,
+  };
+  const rss = `<rss><channel>
+    <item><title>US Senate candidate El-Sayed wants Democratic rival to stay away, source says - Reuters</title><link>https://news.google.com/rss/articles/R1</link><pubDate>Sat, 31 Oct 2026 13:00:00 GMT</pubDate><source url="https://www.reuters.com">Reuters</source></item>
+    <item><title>El-Sayed campaign wants Stevens to stay away - Politico</title><link>https://news.google.com/rss/articles/P1</link><pubDate>Sat, 31 Oct 2026 13:00:00 GMT</pubDate><source url="https://www.politico.com">Politico</source></item>
+    <item><title>US Senate candidate El-Sayed wants Democratic rival to stay away, source says - TradingView</title><link>https://www.tradingview.com/news/elsayed</link><pubDate>Sat, 31 Oct 2026 14:00:00 GMT</pubDate><source url="https://www.tradingview.com">TradingView</source></item>
+    <item><title>El-Sayed and Stevens clash in final primary debate before Democratic rival stay away fight - Bridge Michigan</title><link>https://news.google.com/rss/articles/B1</link><pubDate>Mon, 03 Aug 2026 13:00:00 GMT</pubDate><source url="https://www.bridgemi.com">Bridge Michigan</source></item>
+    <item><title>US Senate candidate El-Sayed wants Democratic rival to stay away - TMZ</title><link>https://news.google.com/rss/articles/T1</link><pubDate>Sat, 31 Oct 2026 13:00:00 GMT</pubDate><source url="https://www.tmz.com">TMZ</source></item>
+    <item><title>Lions beat Packers in overtime - Detroit Free Press</title><link>https://www.freep.com/lions</link><pubDate>Sat, 31 Oct 2026 13:00:00 GMT</pubDate><source url="https://www.freep.com">Detroit Free Press</source></item>
+  </channel></rss>`;
+  const body = "<article>" + Array.from({ length: 8 }, (_, index) => `<p>Paragraph ${index + 1} explains in detail what the El-Sayed campaign asked of Haley Stevens this week.</p>`).join("") + "</article>";
+
+  it("keeps only same-cycle similar stories from other, readable outlets", () => {
+    const candidates = parseGoogleNewsCandidates(rss, reuters);
+    expect(candidates.map((candidate) => candidate.publisher)).toEqual(["TradingView"]);
+  });
+
+  it("reads the full story from the alternate outlet and records it for citation", async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://news.google.com/rss/search")) return new Response(rss, { headers: { "content-type": "application/rss+xml" } });
+      if (url === "https://www.tradingview.com/news/elsayed") return new Response(body, { headers: { "content-type": "text/html" } });
+      return new Response("blocked", { status: 403 });
+    });
+    const alternate = await findAlternateCoverage(reuters, fetcher);
+    expect(alternate?.source).toBe("TradingView");
+    expect(alternate?.url).toBe("https://www.tradingview.com/news/elsayed");
+    expect(alternate?.content).toContain("Paragraph 8");
   });
 });

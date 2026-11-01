@@ -53,14 +53,33 @@ describe("substantive story prose", () => {
     expect(prose).not.toMatch(/published headline|the report states|readers should consult|this edition/);
   });
 
-  it("links every headline to the publisher page", () => {
+  it("keeps headlines as plain text and cites the publisher only inline", () => {
     const { container } = render(<Newsroom initial={payload} editionDate="2026-10-20" editionKind="today" />);
-    const link = container.querySelector("#global article.story-article h3 a.story-headline-link");
-    expect(link).toHaveAttribute("href", "https://apnews.com/article/yemen-houthis-saudi-fighting");
-    expect(link).toHaveAttribute("target", "_blank");
+    const story = container.querySelector("#global article.story-article");
+    expect(story?.querySelector("h3 a")).toBeNull();
+    expect(story?.querySelector("a.source-citation")).toHaveAttribute("href", "https://apnews.com/article/yemen-houthis-saudi-fighting");
   });
 
-  it("routes a headline-only story to the publisher instead of padding it", () => {
+  it("cites the outlet whose full text was used when the original was paywalled", () => {
+    const paywalled: NewsPayload = {
+      ...payload,
+      articles: [{
+        ...payload.articles[0],
+        id: "reuters",
+        source: "Reuters",
+        sourceUrl: "https://www.reuters.com/world/example",
+        contentSource: "TradingView",
+        contentUrl: "https://www.tradingview.com/news/example",
+      }],
+    };
+    const { container } = render(<Newsroom initial={paywalled} editionDate="2026-10-20" editionKind="today" />);
+    const story = container.querySelector("#global article.story-article");
+    expect(story?.textContent).toContain("Full text via TradingView");
+    expect(story?.querySelector("a.source-citation")).toHaveAttribute("href", "https://www.tradingview.com/news/example");
+    expect(story?.textContent).toContain("at least 53");
+  });
+
+  it("does not send readers away from a headline-only story", () => {
     const thin: NewsPayload = {
       ...payload,
       articles: [{
@@ -79,8 +98,9 @@ describe("substantive story prose", () => {
     const { container } = render(<Newsroom initial={thin} editionDate="2026-10-20" editionKind="today" />);
     const story = container.querySelector("#elevenlabs article.story-article--thin");
     expect(story).not.toBeNull();
-    expect(story?.querySelector("h3 a")).toHaveAttribute("href", "https://elevenlabs.io/blog/new-model");
-    expect(story?.querySelector("a.read-full")?.textContent).toContain("ElevenLabs Blog");
-    expect(story?.textContent).not.toMatch(/ersatz|no usable article facts/i);
+    expect(story?.querySelector("h3 a")).toBeNull();
+    expect(story?.textContent).toContain("A short teaser.");
+    expect(story?.textContent).not.toMatch(/read the full|open the headline|ersatz/i);
+    expect(story?.querySelector("a.source-citation")).toHaveAttribute("href", "https://elevenlabs.io/blog/new-model");
   });
 });

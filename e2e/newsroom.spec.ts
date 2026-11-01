@@ -18,9 +18,8 @@ test("renders every selected story as its own substantial sourced article", asyn
   const thinStories = page.locator("article.story-article--thin");
   for (let index = 0; index < await thinStories.count(); index += 1) {
     const thin = thinStories.nth(index);
-    const headlineLink = thin.locator("h3 a.story-headline-link");
-    await expect(headlineLink).toHaveAttribute("href", /^https?:\/\//);
-    await expect(thin.locator("a.read-full")).toBeVisible();
+    await expect(thin.locator("h3 a")).toHaveCount(0);
+    await expect(thin.locator("a.source-citation")).toBeVisible();
   }
 
   const stories = page.locator("article.story-article:not(.story-article--thin)");
@@ -28,7 +27,7 @@ test("renders every selected story as its own substantial sourced article", asyn
   for (let index = 0; index < await stories.count(); index += 1) {
     const story = stories.nth(index);
     await expect(story.getByRole("heading")).toBeVisible();
-    await expect(story.locator("h3 a.story-headline-link")).toHaveAttribute("href", /^https?:\/\//);
+    await expect(story.locator("h3 a")).toHaveCount(0);
     const paragraphs = story.locator(":scope > p");
     const paragraphCount = await paragraphs.count();
     expect(paragraphCount).toBeGreaterThanOrEqual(3);
