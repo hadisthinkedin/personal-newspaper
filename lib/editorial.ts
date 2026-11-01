@@ -11,6 +11,7 @@ const DEFAULT_CONSEQUENCE: Record<SectionId, string> = {
   mamdani: "The development tests how a prominent political agenda translates into governing choices, public accountability, and consequences for New Yorkers.",
   technology: "The change could alter the tools, platforms, standards, or competitive landscape that technical workers and consumers depend on.",
   ai: "The development could change model capability, access, safety, labor, market power, regulation, or how people and institutions use artificial intelligence.",
+  elevenlabs: "The development could change what ElevenLabs voice, agent and audio tools can do, what they cost, or how the company competes in AI audio.",
   "screen-cinema": "The report concerns a material creative, production, distribution, or business decision rather than celebrity gossip or unsupported rumor.",
   "good-news": "The value lies in measurable progress: a funded intervention, approved treatment, implemented program, or documented improvement in people’s lives.",
 };
@@ -20,6 +21,9 @@ export function consequenceFor(article: Article) {
 
   if (article.category === "ai") {
     return "The consequential question is not the announcement alone but whether capability, cost, access, safety, regulation, or practical reliability changes for people and institutions using AI.";
+  }
+  if (article.category === "elevenlabs") {
+    return "The practical test is whether the voice, agent, or audio change ships to developers and customers, how it is priced, and whether quality and safety hold up in real use.";
   }
   if (article.category === "technology") {
     return "The issue extends beyond a product launch because it may change technical capability, market power, security exposure, privacy, or the terms under which people use a platform.";

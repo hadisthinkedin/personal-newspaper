@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getNews } from "@/lib/news";
+import { relativeEditionDates } from "@/lib/editions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   revalidatePath("/", "page");
   revalidatePath("/api/news", "page");
 
-  const edition = await getNews();
+  const edition = await getNews(relativeEditionDates().today);
   return NextResponse.json({
     ok: true,
     warmedAt: new Date().toISOString(),

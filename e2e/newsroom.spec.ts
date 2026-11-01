@@ -12,14 +12,23 @@ test("renders every selected story as its own substantial sourced article", asyn
   expect(newsResponse.ok()).toBe(true);
 
   const sections = page.locator("section.edition-section");
-  await expect(sections).toHaveCount(12, { timeout: 30_000 });
+  await expect(sections).toHaveCount(13, { timeout: 30_000 });
   await expect(page.locator("article.brief-card")).toHaveCount(0);
 
-  const stories = page.locator("article.story-article");
+  const thinStories = page.locator("article.story-article--thin");
+  for (let index = 0; index < await thinStories.count(); index += 1) {
+    const thin = thinStories.nth(index);
+    const headlineLink = thin.locator("h3 a.story-headline-link");
+    await expect(headlineLink).toHaveAttribute("href", /^https?:\/\//);
+    await expect(thin.locator("a.read-full")).toBeVisible();
+  }
+
+  const stories = page.locator("article.story-article:not(.story-article--thin)");
   expect(await stories.count()).toBeGreaterThan(0);
   for (let index = 0; index < await stories.count(); index += 1) {
     const story = stories.nth(index);
     await expect(story.getByRole("heading")).toBeVisible();
+    await expect(story.locator("h3 a.story-headline-link")).toHaveAttribute("href", /^https?:\/\//);
     const paragraphs = story.locator(":scope > p");
     const paragraphCount = await paragraphs.count();
     expect(paragraphCount).toBeGreaterThanOrEqual(3);

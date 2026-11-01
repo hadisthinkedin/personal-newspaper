@@ -929,3 +929,49 @@ footer > a {
     break-before: page;
   }
 }
+
+.story-headline-link {
+  color: inherit;
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 180ms ease, color 180ms ease;
+}
+
+.story-headline-link:hover,
+.story-headline-link:focus-visible {
+  color: var(--blue);
+  background-size: 100% 1px;
+}
+
+.story-headline-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+.story-article--thin .thin-summary::first-letter {
+  float: none;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.read-full {
+  display: inline-block;
+  color: var(--blue);
+  font: 650 13px/1.3 var(--font-sans), Arial, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.read-full:hover,
+.read-full:focus-visible {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story-headline-link { transition: none; }
+}

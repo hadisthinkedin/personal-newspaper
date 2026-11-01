@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiNewsScore, dedupeArticles, excerpt, FEEDS, normalizeItem, qualifies, sanitizeText, screenCinemaScore, selectSectionArticles, SECTIONS, type Article } from "@/lib/news";
+import { aiNewsScore, dedupeArticles, elevenLabsScore, excerpt, FEEDS, normalizeItem, qualifies, sanitizeText, screenCinemaScore, selectSectionArticles, SECTIONS, type Article } from "@/lib/news";
 
 const source = { name: "Example News", category: "global" as const, url: "https://example.com/feed", lens: "wire" as const };
 
@@ -277,5 +277,63 @@ describe("dedupeArticles", () => {
     const first = normalizeItem({ title: "Shared headline", link: "https://example.com/a" }, source)!;
     const second = { ...first, id: "second", category: "national" as const };
     expect(dedupeArticles([first, second])).toHaveLength(2);
+  });
+});
+
+describe("ElevenLabs desk", () => {
+  const eleven = (title: string, overrides: Partial<Article> = {}): Article => ({
+    id: title,
+    title,
+    url: `https://example.com/${encodeURIComponent(title)}`,
+    source: "ElevenLabs Blog",
+    category: "elevenlabs",
+    publishedAt: "2026-10-30T12:00:00.000Z",
+    description: "",
+    image: null,
+    lens: "official",
+    viaAggregator: false,
+    ...overrides,
+  });
+
+  it("has an ElevenLabs section fed by the official blog and outside coverage", () => {
+    expect(SECTIONS.some((section) => section.id === "elevenlabs" && section.label === "ElevenLabs")).toBe(true);
+    expect(FEEDS.filter((feed) => feed.category === "elevenlabs").map((feed) => feed.name)).toEqual(["ElevenLabs Blog", "ElevenLabs coverage"]);
+  });
+
+  it("requires outside coverage to actually mention ElevenLabs", () => {
+    expect(qualifies(eleven("Voice cloning startup raises money", { source: "TechCrunch", lens: "technology" }))).toBe(false);
+    expect(qualifies(eleven("ElevenLabs raises $500 million", { source: "TechCrunch", lens: "technology" }))).toBe(true);
+    expect(qualifies(eleven("Warm transfer vs cold transfer"))).toBe(true);
+  });
+
+  it("drops job listings, social posts, and promo spam about ElevenLabs", () => {
+    const outside = { lens: "technology" as const, viaAggregator: true };
+    expect(qualifies(eleven("Full-Stack Engineer - ElevenCreative Enterprise at ElevenLabs in Remote", { ...outside, source: "CodingJobBoard.com" }))).toBe(false);
+    expect(qualifies(eleven("[Remote Job] Transcription / Subtitling Specialist at ElevenLabs", { ...outside, source: "Working Nomads" }))).toBe(false);
+    expect(qualifies(eleven("How are people still paying $0.08/min for a voice agent? ElevenLabs", { ...outside, source: "LinkedIn" }))).toBe(false);
+    expect(qualifies(eleven("CLAIM YOUR REWARDS NOW! FREE ElevenLabs credits", { ...outside, source: "YouTube" }))).toBe(false);
+    expect(qualifies(eleven("ElevenLabs releases two new speech-to-speech models", { ...outside, source: "The Decoder" }))).toBe(true);
+  });
+
+  it("ranks launches and funding above evergreen guides", () => {
+    const guide = eleven("What is turn taking in conversational AI: A guide to natural flow");
+    const launch = eleven("Introducing SFX v3 in ElevenCreative and ElevenAPI");
+    const funding = eleven("ElevenLabs raises funding at $11 billion valuation", { source: "Reuters", lens: "technology" });
+    expect(elevenLabsScore(launch)).toBeGreaterThan(elevenLabsScore(guide));
+    expect(elevenLabsScore(funding)).toBeGreaterThan(elevenLabsScore(guide));
+    const selected = selectSectionArticles([guide, launch, funding], "elevenlabs", 2);
+    expect(selected).not.toContain(guide);
+  });
+});
+
+describe("good news spam guard", () => {
+  it("drops paid follower and subscriber spam that borrows the word approved", () => {
+    const spam: Article = {
+      id: "spam", title: "5 Best Sites to Buy YouTube Subscribers (Approved) in 2026", url: "https://example.com/spam",
+      source: "Western Pacific Surveillance and Response", category: "good-news", publishedAt: null,
+      description: "", image: null, lens: "official", viaAggregator: true,
+    };
+    expect(qualifies(spam)).toBe(false);
+    expect(qualifies({ ...spam, title: "FDA approves first treatment for a rare childhood disease" })).toBe(true);
   });
 });

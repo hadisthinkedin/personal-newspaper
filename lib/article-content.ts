@@ -49,6 +49,10 @@ function apTranslationMirror(value: string) {
   }
 }
 
+// Tailwind-style class names such as "[&>strong]:font-bold" put ">" inside
+// quoted attributes, so tags must be matched with quote-aware attribute parsing.
+const PARAGRAPH_PATTERN = /<p\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/p>/gi;
+
 function plainText(html: string) {
   return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
     .replace(/&(?:amp|#38);/gi, "&")
@@ -101,7 +105,7 @@ export function extractArticleText(html: string): string {
 
   const apStoryBody = divBodyWithClass(html, "RichTextStoryBody");
   if (apStoryBody) {
-    const paragraphs = [...apStoryBody.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    const paragraphs = [...apStoryBody.matchAll(PARAGRAPH_PATTERN)]
       .map((match) => plainText(match[1]))
       .filter((text) => text.length >= 40);
     if (paragraphs.length) return cleanArticleText(paragraphs.join(" "));
@@ -112,7 +116,7 @@ export function extractArticleText(html: string): string {
     ? html.slice(articleBodyStart, html.search(/<\/body>/i) >= 0 ? html.search(/<\/body>/i) : undefined)
     : (html.match(/<(main|article)[^>]*>([\s\S]*?)<\/\1>/i)?.[2] ?? "");
   if (semantic) {
-    const paragraphs = [...semantic.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((match) => plainText(match[1])).filter((text) => text.length >= 40);
+    const paragraphs = [...semantic.matchAll(PARAGRAPH_PATTERN)].map((match) => plainText(match[1])).filter((text) => text.length >= 40);
     if (paragraphs.length) return cleanArticleText(paragraphs.join(" "));
   }
 
@@ -171,6 +175,7 @@ export async function enrichArticleContent(article: Article, fetcher: Fetcher = 
   try {
     const sourceUrl = article.viaAggregator ? await resolveGoogleNewsUrl(article.url, fetcher) : article.url;
     if (!sourceUrl) return article;
+    if ((article.content?.length ?? 0) >= 800) return { ...article, sourceUrl };
     const nytCookie = isNytUrl(sourceUrl) ? await readNytCookie() : null;
     const requestOptions: RequestInit = {
       headers: {
@@ -191,7 +196,8 @@ export async function enrichArticleContent(article: Article, fetcher: Fetcher = 
         content = extractArticleText(await mirrorResponse.text());
       }
     }
-    return { ...article, sourceUrl, ...(content ? { content } : {}) };
+    const best = content.length >= (article.content?.length ?? 0) ? content : article.content;
+    return { ...article, sourceUrl, ...(best ? { content: best } : {}) };
   } catch {
     return article;
   }

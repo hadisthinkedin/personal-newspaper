@@ -74,6 +74,10 @@ const SECTION_READING: Record<SectionId, { opening: string; close: string }> = {
     opening: "The AI desk ranks consequential model releases, product changes, research, policy, safety, investment and useful emerging tools, with direct coverage of OpenAI, ChatGPT, Anthropic, Claude and TypeSafe’s Jev when material developments occur.",
     close: "Official announcements establish what a lab says it shipped; independent reporting, documentation, benchmarks and real-world use determine whether the development matters.",
   },
+  elevenlabs: {
+    opening: "The ElevenLabs desk tracks the voice AI company's model releases, agent and API launches, funding, partnerships and policy questions, pairing its own blog with outside reporting and ranking evergreen guides below real news.",
+    close: "Company posts establish what ElevenLabs says it shipped; independent tests, pricing, developer adoption and safety reporting show whether the change matters.",
+  },
   "screen-cinema": {
     opening: "Screen and cinema coverage is limited to material developments in Hollywood movies, excluding television, celebrity profiles, awards chatter, promotional appearances, and non-Hollywood film industries.",
     close: "A project becomes more concrete when financing, production, casting, distribution, or a release commitment is documented; until then, the wording of the source matters.",
@@ -97,18 +101,42 @@ function oneSentenceQuote(value: string, words: number) {
   return firstSentence.replace(/[.!?…]+$/u, "");
 }
 
+function StoryHeadline({ article }: { article: Article }) {
+  return (
+    <h3>
+      <a className="story-headline-link" href={article.sourceUrl ?? article.url} target="_blank" rel="noreferrer">{article.title}</a>
+    </h3>
+  );
+}
+
+function ThinStory({ article }: { article: Article }) {
+  const sourceUrl = article.sourceUrl ?? article.url;
+  const summary = article.content?.trim() || article.description.trim();
+  return (
+    <article className="story-article story-article--thin">
+      <header className="story-heading">
+        <p>{article.source} · {article.publishedAt ? formatEdition(article.publishedAt) : "Date unavailable"}</p>
+        <StoryHeadline article={article} />
+      </header>
+      {summary && summary.toLowerCase() !== article.title.toLowerCase() && <p className="thin-summary"><EntityText text={excerpt(summary, 60)} /></p>}
+      <a className="read-full" href={sourceUrl} target="_blank" rel="noreferrer">Read the full story at {article.source} →</a>
+    </article>
+  );
+}
+
 function ReportStory({ article }: { article: Article }) {
   const factualParagraphs = storyParagraphs(article);
   const sourceUrl = article.sourceUrl ?? article.url;
+  if (!factualParagraphs.length) return <ThinStory article={article} />;
   return (
     <article className="story-article">
       <header className="story-heading">
         <p>{article.source} · {article.publishedAt ? formatEdition(article.publishedAt) : "Date unavailable"}</p>
-        <h3><EntityText text={article.title} /></h3>
+        <StoryHeadline article={article} />
       </header>
-      {factualParagraphs.length ? factualParagraphs.map((paragraph, index) => (
+      {factualParagraphs.map((paragraph, index) => (
         <p key={`${article.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={sourceUrl} target="_blank" rel="noreferrer">{article.source}</a></p>
-      )) : <p>The linked feed supplied a headline but no usable article facts. The edition therefore does not turn that headline into ersatz reporting. No additional claims are inferred from the headline alone. The item remains linked so readers can check the publisher for fuller reporting or updates. <a className="source-citation" href={sourceUrl} target="_blank" rel="noreferrer">Read the source report.</a></p>}
+      ))}
       <p>{consequenceFor(article)} That is the central reason this item matters. The effects will depend on implementation, adoption, and the response of affected institutions. Further reporting should test the announcement or event against measurable outcomes.</p>
       <p>{EVIDENCE[article.lens]} The item was selected for consequence and source quality rather than because it appeared first in the feed. This edition does not treat publication by itself as proof of every claim. New documents, corrections, or additional reporting may change this assessment.</p>
     </article>
@@ -121,15 +149,16 @@ function PerspectiveStory({ cluster }: { cluster: PerspectiveCluster }) {
   const apArticle = [anchor, wireSupport].find((article) => article?.source === "AP News");
   const factualParagraphs = storyParagraphs(anchor);
   const anchorUrl = anchor.sourceUrl ?? anchor.url;
+  if (!factualParagraphs.length && !wireSupport && !left && !right) return <ThinStory article={anchor} />;
   return (
     <article className="story-article story-article--headline">
       <header className="story-heading">
         <p>{anchor.source} · {anchor.publishedAt ? formatEdition(anchor.publishedAt) : "Date unavailable"}</p>
-        <h3><EntityText text={anchor.title} /></h3>
+        <StoryHeadline article={anchor} />
       </header>
       {factualParagraphs.length ? factualParagraphs.map((paragraph, index) => (
         <p key={`${anchor.id}-fact-${index}`}><EntityText text={paragraph} /> <a className="source-citation" href={anchorUrl} target="_blank" rel="noreferrer">{anchor.source}</a></p>
-      )) : <p>The source feed supplied only a headline for this item. No independently extracted body text was available, so no additional event details are asserted here. The linked publisher remains the authoritative place to read its reporting and any updates. The headline is retained only to identify the item without inventing supporting details. <a className="source-citation" href={anchorUrl} target="_blank" rel="noreferrer">Read the source report.</a></p>}
+      )) : <p>{anchor.source} has not published more than a headline in its feed, and the full article could not be retrieved automatically. Open the headline above to read the complete report on the publisher’s site. The comparisons below come from related coverage of the same development. <a className="source-citation" href={anchorUrl} target="_blank" rel="noreferrer">Read the full report.</a></p>}
       <p>{consequenceFor(anchor)} This consequence, not feed position, is why the story ranks among the leading reports. The eventual effects will depend on implementation and the response of affected governments, institutions, or communities. Follow-up reporting should compare stated intentions with observable results.</p>
       {wireSupport && <p>A second wire account from <a className="source-citation" href={wireSupport.sourceUrl ?? wireSupport.url} target="_blank" rel="noreferrer">{wireSupport.source}</a> reports, <q><EntityText text={quote(wireSupport)} /></q>. The overlap strengthens confidence in the core event. The accounts may still differ in timing, emphasis, or available evidence. Contested details should be checked against both reports and later updates.</p>}
       {left && <p>In closely related coverage, <a className="source-citation" href={left.sourceUrl ?? left.url} target="_blank" rel="noreferrer">{left.source}</a> emphasizes, <q><EntityText text={quote(left)} /></q>. That framing shows which consequences or constituencies the outlet places near the center of the story. It remains an interpretation rather than a substitute for documents or direct evidence. Its emphasis should be compared with the baseline report.</p>}
@@ -283,7 +312,7 @@ export default function Newsroom({ initial, editionDate, editionKind }: { initia
           <header><p className="kicker">Transparent by Design</p><h2 id="method-heading">How This Edition Is Sourced</h2></header>
           <div className="method-copy">
             <p>AP and Reuters establish the broad factual baseline when suitable feeds are available. CNN and Fox News Digital are read for contrasting political framing, while Bridge Michigan, Michigan Public, BridgeDetroit, WDET, City Pulse, East Lansing Info, and other local publishers supply reporting closest to Michigan communities.</p>
-            <p>Technology coverage draws from specialist newsrooms such as The Verge, Ars Technica, and TechCrunch, while Hollywood movie coverage relies on film-specific feeds from established trades including Variety, Deadline, and The Hollywood Reporter. Official government, public-health, campaign, and company pages establish that an announcement or action occurred; they do not independently verify every claim inside it.</p>
+            <p>Technology coverage draws from specialist newsrooms such as The Verge, Ars Technica, and TechCrunch, while ElevenLabs coverage pairs the company’s official blog with outside reporting, and Hollywood movie coverage relies on film-specific feeds from established trades including Variety, Deadline, and The Hollywood Reporter. Official government, public-health, campaign, and company pages establish that an announcement or action occurred; they do not independently verify every claim inside it.</p>
             <p>Quoted language is intentionally brief and comes from publisher-provided feed text or headlines. Every attribution links to the full original report, where the publisher’s complete context, evidence, corrections, and reporting belong.</p>
           </div>
         </aside>

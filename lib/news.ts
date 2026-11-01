@@ -16,6 +16,7 @@ export const SECTIONS = [
   { id: "mamdani", label: "Zohran Mamdani Tracker", dek: "Government actions and policy implementation, separated from praise, criticism and viral clips.", limit: 3 },
   { id: "technology", label: "Technology", dek: "Products, platforms and the broader technology market, checked against primary documentation where possible.", limit: 4 },
   { id: "ai", label: "Top AI News", dek: "The most consequential developments in ChatGPT, OpenAI, Anthropic, frontier models, policy, safety and genuinely useful emerging AI tools.", limit: 6 },
+  { id: "elevenlabs", label: "ElevenLabs", dek: "Voice models, agents, product launches, funding and policy news from ElevenLabs, with official posts kept separate from outside reporting.", limit: 4 },
   { id: "screen-cinema", label: "Screen & Cinema", dek: "Confirmed casting, production, directing, release, franchise and studio-business developments in Hollywood movies.", limit: 5 },
   { id: "good-news", label: "Meaningful Good News", dek: "Approved treatments, implemented policy, real funding and measurable progress—not vague future promises.", limit: 3 },
 ] as const;
@@ -81,6 +82,8 @@ export const FEEDS: FeedSource[] = [
   { name: "The Verge AI", category: "ai", url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", lens: "technology" },
   { name: "TechCrunch AI", category: "ai", url: "https://techcrunch.com/category/artificial-intelligence/feed/", lens: "technology" },
   { name: "The New York Times Technology", category: "ai", url: "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml", lens: "technology" },
+  { name: "ElevenLabs Blog", category: "elevenlabs", url: "https://elevenlabs.io/blog/rss.xml", lens: "official" },
+  { name: "ElevenLabs coverage", category: "elevenlabs", url: googleNews("ElevenLabs (site:reuters.com OR site:bloomberg.com OR site:cnbc.com OR site:techcrunch.com OR site:theverge.com OR site:wired.com OR site:arstechnica.com OR site:venturebeat.com OR site:the-decoder.com OR site:sifted.eu OR site:theinformation.com OR site:fortune.com OR site:forbes.com OR site:businessinsider.com OR site:ft.com OR site:wsj.com OR site:nytimes.com OR site:axios.com OR site:semafor.com OR site:thenewstack.io OR site:slator.com) when:7d"), lens: "technology", viaGoogle: true },
   { name: "Variety", category: "screen-cinema", url: "https://variety.com/v/film/feed/", lens: "trade" },
   { name: "Deadline", category: "screen-cinema", url: "https://deadline.com/v/film/feed/", lens: "trade" },
   { name: "The Hollywood Reporter", category: "screen-cinema", url: "https://www.hollywoodreporter.com/c/movies/movie-news/feed/", lens: "trade" },
@@ -205,6 +208,11 @@ export function normalizeItem(item: FeedItem, source: FeedSource): Article | nul
     if (description === rawTitle || description === `${title} ${publisher ?? ""}`.trim()) description = "";
   }
 
+  // Many WordPress feeds ship the full story in content:encoded. Keep it so a
+  // publisher that blocks scrapers still yields a real article, not a headline.
+  const feedBody = sanitizeText(item.contentEncoded).slice(0, 12_000);
+  const content = feedBody.length >= 800 ? feedBody : undefined;
+
   return {
     id: crypto.createHash("sha1").update(`${source.category}:${url}`).digest("hex").slice(0, 16),
     title,
@@ -216,6 +224,7 @@ export function normalizeItem(item: FeedItem, source: FeedSource): Article | nul
     image: source.viaGoogle ? null : itemImage(item),
     lens: source.lens,
     viaAggregator: Boolean(source.viaGoogle),
+    ...(content ? { content } : {}),
   };
 }
 
@@ -322,6 +331,45 @@ export function aiNewsScore(article: Article): number {
   return score;
 }
 
+const ELEVENLABS_TOPIC = /\b(?:ElevenLabs|Eleven ?Labs|ElevenAgents|ElevenCreative|ElevenAPI|Eleven v\d|Mati Staniszewski|Piotr Dabkowski)\b/i;
+const ELEVENLABS_EVENT = /\b(?:introduc(?:es|ed|ing)|launch(?:es|ed)?|releases?d?|unveil(?:s|ed)?|announce[sd]?|model|v\d|API|funding|raises?|valuation|tender offer|acqui(?:res?|red|sition)|partner(?:s|ship)?|deal|lawsuit|policy|safety|research|benchmark|agents?)\b/i;
+const ELEVENLABS_EVERGREEN = /^(?:what is|what are|how to|how (?:we|you)|guide|best\b|top \d+)|\b(?:vs\.?|versus|a guide|explained|tips)\b|:\s*(?:a guide|choosing|everything)/i;
+const ELEVENLABS_NOISE_SOURCE = /\b(?:LinkedIn|YouTube|Reddit|X|Twitter|Facebook|Instagram|TikTok|Medium|Substack|Quora|GitHub|Product Hunt|Indeed|Glassdoor|ZipRecruiter|Wellfound|Built In|Working Nomads|We Work Remotely|Remote OK|RemoteOK|Himalayas|Jobgether|Jooble|Lever|Greenhouse|Ashby|[A-Za-z]*Job[A-Za-z]*(?:\.com)?|[A-Za-z]*Careers?)\b/i;
+const ELEVENLABS_JOB_OR_PROMO = /\[remote job\]|\b(?:hiring|job opening|apply now|careers? at|(?:engineer|manager|specialist|designer|scientist|lead|intern|analyst|recruiter|representative|associate)\b[^|]{0,80}\bat ElevenLabs|(?:at|@) ElevenLabs in (?:Remote|[A-Z])|\s@ ElevenLabs\b|claim your rewards|free credits?|promo code|coupon|giveaway|my (?:submission|entry))\b/i;
+const PRESS_WIRE = /\b(?:EIN Presswire|PR Newswire|Business Wire|GlobeNewswire|Accesswire)\b/i;
+
+export function elevenLabsScore(article: Article): number {
+  if (article.category !== "elevenlabs") return 0;
+  const text = `${article.title} ${article.description}`;
+  let score = editorialWorthiness(article);
+  if (ELEVENLABS_EVENT.test(article.title)) score += 6;
+  if (/^introducing\b/i.test(article.title)) score += 6;
+  if (article.lens === "official") score += 2;
+  if (/\b(?:Reuters|Bloomberg|TechCrunch|The Verge|Forbes|CNBC|The Information|Financial Times|Wall Street Journal|New York Times)\b/i.test(article.source)) score += 4;
+  if (ELEVENLABS_EVERGREEN.test(article.title)) score -= 10;
+  if (PRESS_WIRE.test(article.source) || PRESS_WIRE.test(text)) score -= 6;
+  return score;
+}
+
+function selectElevenLabsArticles(candidates: Article[], limit: number) {
+  const timestamp = (article: Article) => article.publishedAt ? Date.parse(article.publishedAt) || 0 : 0;
+  const ranked = [...candidates].sort((a, b) => elevenLabsScore(b) - elevenLabsScore(a) || timestamp(b) - timestamp(a));
+  const selected: Article[] = [];
+  const counts = new Map<string, number>();
+  for (const article of ranked) {
+    const bucket = article.lens === "official" ? "official" : article.source;
+    if ((counts.get(bucket) ?? 0) >= (bucket === "official" ? 2 : 1)) continue;
+    selected.push(article);
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+    if (selected.length === limit) return selected;
+  }
+  for (const article of ranked) {
+    if (selected.length === limit) break;
+    if (!selected.includes(article)) selected.push(article);
+  }
+  return selected;
+}
+
 const AI_COVERAGE_GROUPS = [
   /\b(?:OpenAI|ChatGPT|GPT(?:-[0-9A-Za-z.]+)?)\b/i,
   /\b(?:Anthropic|Claude)\b/i,
@@ -358,6 +406,7 @@ export function selectSectionArticles(articles: Article[], category: SectionId, 
     return candidates.sort((a, b) => editorialWorthiness(b) - editorialWorthiness(a) || newest(b) - newest(a));
   }
   if (category === "ai") return selectAiArticles(candidates, limit);
+  if (category === "elevenlabs") return selectElevenLabsArticles(candidates, limit);
   if (category !== "screen-cinema") {
     return candidates.sort((a, b) => editorialWorthiness(b) - editorialWorthiness(a) || newest(b) - newest(a)).slice(0, limit);
   }
@@ -397,7 +446,13 @@ export function qualifies(article: Article) {
     const sourceEstablishesTopic = article.source === "OpenAI News" || article.source === "Anthropic" || article.source === "TypeSafe AI";
     return !AI_LOW_VALUE.test(text) && (sourceEstablishesTopic || AI_TOPIC.test(text)) && AI_EVENT.test(text);
   }
+  if (article.category === "elevenlabs") {
+    if (article.source === "ElevenLabs Blog") return true;
+    if (ELEVENLABS_NOISE_SOURCE.test(article.source) || ELEVENLABS_JOB_OR_PROMO.test(text)) return false;
+    return ELEVENLABS_TOPIC.test(text);
+  }
   if (article.category === "good-news") {
+    if (/\b(?:buy|cheap|followers|subscribers|likes|views|promo code|coupon|casino|betting)\b/i.test(text)) return false;
     return /(approv|fund|launch|declin|progress|treatment|vaccine|recover|prevent|expand|improv|agreement|milestone)/i.test(text);
   }
   return true;
@@ -446,27 +501,34 @@ export function buildNewsPayload(results: FeedResult[], updatedAt = new Date(), 
   };
 }
 
-async function loadNews() {
+async function loadNews(editionDate: string) {
   const [feedResults, events] = await Promise.all([
     Promise.all(FEEDS.map(fetchFeed)),
     fetchBurgessEvents().then((list) => filterFutureEvents(list)).catch(() => [] as UpcomingEvent[]),
   ]);
   const payload = buildNewsPayload(feedResults, new Date(), events);
+  const { buildPerspectiveClusters } = await import("@/lib/editorial");
+  // Follow every story that will actually be shown to its publisher page so
+  // headline-only feed items can be filled in with the real article text.
+  const { editionDateInDetroit } = await import("@/lib/editions");
+  const pool = /^\d{4}-\d{2}-\d{2}$/.test(editionDate)
+    ? payload.articles.filter((article) => article.publishedAt && editionDateInDetroit(article.publishedAt) === editionDate)
+    : payload.articles;
   const selectedIds = new Set(
-    SECTIONS.flatMap((section) => selectSectionArticles(payload.articles, section.id, section.limit)
-      .slice(0, Math.min(section.limit, 3))
-      .map((article) => article.id)),
+    SECTIONS.flatMap((section) => {
+      const selected = selectSectionArticles(pool, section.id, section.limit);
+      if (section.id !== "global" && section.id !== "national") return selected.map((article) => article.id);
+      return buildPerspectiveClusters(selected).flatMap(({ anchor, wireSupport, left, right }) =>
+        [anchor, wireSupport, left, right].filter((article): article is Article => Boolean(article)).map((article) => article.id));
+    }),
   );
   const enriched = await Promise.all(payload.articles.map((article) => selectedIds.has(article.id) ? enrichArticleContent(article) : article));
   return { ...payload, articles: enriched };
 }
 
 const getNewsCached = unstable_cache(
-  async (editionDate: string) => {
-    void editionDate;
-    return loadNews();
-  },
-  ["daily-bread-news-v3"],
+  async (editionDate: string) => loadNews(editionDate),
+  ["daily-bread-news-v4"],
   { revalidate: 900, tags: ["news"] },
 );
 

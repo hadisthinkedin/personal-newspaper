@@ -52,4 +52,35 @@ describe("substantive story prose", () => {
     expect(prose).toContain("at least 53");
     expect(prose).not.toMatch(/published headline|the report states|readers should consult|this edition/);
   });
+
+  it("links every headline to the publisher page", () => {
+    const { container } = render(<Newsroom initial={payload} editionDate="2026-10-20" editionKind="today" />);
+    const link = container.querySelector("#global article.story-article h3 a.story-headline-link");
+    expect(link).toHaveAttribute("href", "https://apnews.com/article/yemen-houthis-saudi-fighting");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("routes a headline-only story to the publisher instead of padding it", () => {
+    const thin: NewsPayload = {
+      ...payload,
+      articles: [{
+        id: "eleven",
+        title: "ElevenLabs launches a new speech model",
+        url: "https://elevenlabs.io/blog/new-model",
+        source: "ElevenLabs Blog",
+        category: "elevenlabs",
+        publishedAt: "2026-10-20T12:00:00.000Z",
+        description: "A short teaser.",
+        image: null,
+        lens: "official",
+        viaAggregator: false,
+      }],
+    };
+    const { container } = render(<Newsroom initial={thin} editionDate="2026-10-20" editionKind="today" />);
+    const story = container.querySelector("#elevenlabs article.story-article--thin");
+    expect(story).not.toBeNull();
+    expect(story?.querySelector("h3 a")).toHaveAttribute("href", "https://elevenlabs.io/blog/new-model");
+    expect(story?.querySelector("a.read-full")?.textContent).toContain("ElevenLabs Blog");
+    expect(story?.textContent).not.toMatch(/ersatz|no usable article facts/i);
+  });
 });
