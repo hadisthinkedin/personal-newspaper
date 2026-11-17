@@ -339,7 +339,7 @@ export default function Newsroom({ initial, editionDate, editionKind }: { initia
           <summary>Newsroom Status <span>{healthy} live · {data.sources.length - healthy} unavailable</span></summary>
           <div className="health-grid">
             {data.sources.map((source) => (
-              <p key={`${source.source}-${source.category}`}><span className={source.ok ? "health-dot health-dot--live" : "health-dot"} /><strong>{source.source}</strong><span>{source.method}</span><span>{source.ok ? `${source.count} items` : source.error || "Unavailable"}</span></p>
+              <p key={`${source.source}-${source.category}`}><span className={source.ok ? "health-dot health-dot--live" : "health-dot"} /><strong>{source.source}</strong><span>{source.method}</span><span>{source.ok ? `${source.count} items${source.error ? ` · ${source.error}` : ""}` : source.error || "Unavailable"}</span></p>
             ))}
           </div>
         </details>

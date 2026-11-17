@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
-import { getNews } from "@/lib/news";
+import { FEED_TAG, getNews } from "@/lib/news";
 import { relativeEditionDates } from "@/lib/editions";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  revalidateTag("news-feeds", { expire: 0 });
+  // Feeds are marked stale rather than deleted, so a publisher that is
+  // rate-limiting or down at warm-up time keeps its last good stories.
+  revalidateTag(FEED_TAG, "max");
   revalidateTag("news", { expire: 0 });
   revalidatePath("/", "page");
   revalidatePath("/api/news", "page");

@@ -1,5 +1,6 @@
 import sanitizeHtml from "sanitize-html";
 import type { Article } from "@/lib/news";
+import { googleThrottledFetch } from "@/lib/google-throttle";
 
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -162,7 +163,7 @@ function googleArticleId(value: string) {
   }
 }
 
-export async function resolveGoogleNewsUrl(value: string, fetcher: Fetcher = fetch): Promise<string | null> {
+export async function resolveGoogleNewsUrl(value: string, fetcher: Fetcher = googleThrottledFetch): Promise<string | null> {
   const id = googleArticleId(value);
   if (!id) return value;
   const paramsUrl = `https://news.google.com/rss/articles/${id}?hl=en-US&gl=US&ceid=US:en`;
@@ -263,7 +264,7 @@ export function parseGoogleNewsCandidates(xml: string, article: Pick<Article, "t
  * video page), read the same story from another outlet so the digest can carry
  * the full text itself. The alternate outlet is recorded for citation.
  */
-export async function findAlternateCoverage(article: Article, fetcher: Fetcher = fetch, maximumCandidates = 4): Promise<{ content: string; source: string; url: string } | null> {
+export async function findAlternateCoverage(article: Article, fetcher: Fetcher = googleThrottledFetch, maximumCandidates = 4): Promise<{ content: string; source: string; url: string } | null> {
   const params = new URLSearchParams({ q: `${article.title} when:7d`, hl: "en-US", gl: "US", ceid: "US:en" });
   const response = await fetcher(`https://news.google.com/rss/search?${params}`, { headers: { "user-agent": "TheDailyBread/2.0" }, signal: AbortSignal.timeout(6_000) });
   if (!response.ok) return null;
@@ -285,7 +286,7 @@ export async function findAlternateCoverage(article: Article, fetcher: Fetcher =
   return reports.find(Boolean) ?? null;
 }
 
-export async function enrichArticleContent(article: Article, fetcher: Fetcher = fetch): Promise<Article> {
+export async function enrichArticleContent(article: Article, fetcher: Fetcher = googleThrottledFetch): Promise<Article> {
   const enriched = await enrichFromPublisher(article, fetcher);
   // The original publisher's own text wins whenever it is long enough to render as a story.
   if (usableSentenceCount(enriched.content || enriched.description) >= 4) return enriched;

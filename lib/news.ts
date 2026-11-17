@@ -3,6 +3,7 @@ import Parser from "rss-parser";
 import sanitizeHtml from "sanitize-html";
 import { unstable_cache } from "next/cache";
 import { enrichArticleContent } from "@/lib/article-content";
+import { googleThrottledFetch } from "@/lib/google-throttle";
 import { fetchBurgessEvents, filterFutureEvents, type UpcomingEvent } from "@/lib/events";
 
 export const SECTIONS = [
@@ -44,7 +45,7 @@ export type SourceHealth = { source: string; category: SectionId; ok: boolean; c
 export type NewsPayload = { articles: Article[]; updatedAt: string; sources: SourceHealth[]; upcomingEvents: UpcomingEvent[] };
 export type FeedSource = { name: string; category: SectionId; url: string; lens: Lens; viaGoogle?: boolean; allowedPublishers?: string[] };
 type FeedItem = Parser.Item & Record<string, unknown>;
-type FeedResult = { source: string; category: SectionId; ok: boolean; articles: Article[]; method: "direct" | "Google News"; error?: string };
+type FeedResult = { source: string; category: SectionId; ok: boolean; articles: Article[]; method: "direct" | "Google News"; error?: string; fetchedAt?: string };
 
 function googleNews(query: string) {
   const params = new URLSearchParams({ q: query, hl: "en-US", gl: "US", ceid: "US:en" });
@@ -462,14 +463,14 @@ export function qualifies(article: Article) {
   return true;
 }
 
-async function fetchFeed(source: FeedSource): Promise<FeedResult> {
+async function fetchFeedStrict(source: FeedSource): Promise<CachedFeed> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), 20_000);
   try {
-    const response = await fetch(source.url, {
+    const response = await googleThrottledFetch(source.url, {
       signal: controller.signal,
       headers: { "user-agent": "TheDailyBread/2.0", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5" },
-      next: { revalidate: 900, tags: ["news-feeds"] },
+      cache: "no-store",
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const xml = await response.text();
@@ -480,12 +481,52 @@ async function fetchFeed(source: FeedSource): Promise<FeedResult> {
       .filter((article) => !source.allowedPublishers || source.allowedPublishers.some((publisher) => publisher.toLowerCase() === article.source.toLowerCase()))
       .filter(qualifies)
       .slice(0, 30);
-    return { source: source.name, category: source.category, ok: true, articles, method: source.viaGoogle ? "Google News" : "direct" };
-  } catch (error) {
-    const message = error instanceof Error && error.name === "AbortError" ? "Timed out" : error instanceof Error ? error.message : "Feed unavailable";
-    return { source: source.name, category: source.category, ok: false, articles: [], method: source.viaGoogle ? "Google News" : "direct", error: message.slice(0, 80) };
+    return { articles, fetchedAt: new Date().toISOString() };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+type CachedFeed = { articles: Article[]; fetchedAt: string };
+
+/**
+ * Each feed is cached on its own, outside the edition cache, with
+ * stale-while-revalidate semantics. A failed refresh throws, and Next.js keeps
+ * serving the last good copy instead of replacing it, so a rate-limited or
+ * broken publisher leaves its last stories in place rather than an empty desk.
+ */
+function lastGoodFeed(source: FeedSource) {
+  return unstable_cache(() => fetchFeedStrict(source), ["feed-last-good-v1", source.name, source.url], {
+    revalidate: FEED_REVALIDATE_SECONDS,
+    tags: [FEED_TAG],
+  })();
+}
+
+export const FEED_TAG = "feed-last-good";
+const FEED_REVALIDATE_SECONDS = 900;
+const STALE_AFTER_MS = 45 * 60 * 1000;
+
+export function describeError(error: unknown) {
+  const message = error instanceof Error && error.name === "AbortError" ? "Timed out" : error instanceof Error ? error.message : "Feed unavailable";
+  return message.slice(0, 80);
+}
+
+async function fetchFeed(source: FeedSource, now = Date.now()): Promise<FeedResult> {
+  const method = source.viaGoogle ? "Google News" as const : "direct" as const;
+  try {
+    const { articles, fetchedAt } = await lastGoodFeed(source);
+    const age = now - Date.parse(fetchedAt);
+    return {
+      source: source.name,
+      category: source.category,
+      ok: true,
+      articles,
+      method,
+      fetchedAt,
+      ...(age > STALE_AFTER_MS ? { error: `Last good copy from ${Math.round(age / 60_000)} min ago` } : {}),
+    };
+  } catch (error) {
+    return { source: source.name, category: source.category, ok: false, articles: [], method, error: describeError(error) };
   }
 }
 
@@ -499,17 +540,14 @@ export function buildNewsPayload(results: FeedResult[], updatedAt = new Date(), 
       ok: result.ok,
       count: result.articles.length,
       method: result.method,
-      ...(!result.ok && result.error ? { error: result.error } : {}),
+      ...(result.error ? { error: result.error } : {}),
     })),
     upcomingEvents,
   };
 }
 
-async function loadNews(editionDate: string) {
-  const [feedResults, events] = await Promise.all([
-    Promise.all(FEEDS.map(fetchFeed)),
-    fetchBurgessEvents().then((list) => filterFutureEvents(list)).catch(() => [] as UpcomingEvent[]),
-  ]);
+async function loadNews(editionDate: string, feedResults: FeedResult[]) {
+  const events = await fetchBurgessEvents().then((list) => filterFutureEvents(list)).catch(() => [] as UpcomingEvent[]);
   const payload = buildNewsPayload(feedResults, new Date(), events);
   const { buildPerspectiveClusters } = await import("@/lib/editorial");
   // Follow every story that will actually be shown to its publisher page so
@@ -530,12 +568,20 @@ async function loadNews(editionDate: string) {
   return { ...payload, articles: enriched };
 }
 
-const getNewsCached = unstable_cache(
-  async (editionDate: string) => loadNews(editionDate),
-  ["daily-bread-news-v8"],
-  { revalidate: 900, tags: ["news"] },
-);
-
-export function getNews(editionDate = "current") {
-  return getNewsCached(editionDate);
+/**
+ * Feeds are read first, each from its own last-good cache, so they are not
+ * nested inside the edition cache (Next.js bypasses nested caches and fetch
+ * caching inside unstable_cache). The edition cache is then keyed by the feed
+ * snapshot, so enrichment reruns only when some feed actually changed.
+ */
+export async function getNews(editionDate = "current") {
+  const feedResults = await Promise.all(FEEDS.map((source) => fetchFeed(source)));
+  const snapshot = crypto.createHash("sha1")
+    .update(feedResults.map((result) => `${result.source}:${result.ok}:${result.fetchedAt ?? ""}`).join("|"))
+    .digest("hex")
+    .slice(0, 16);
+  return unstable_cache(() => loadNews(editionDate, feedResults), ["daily-bread-news-v9", editionDate, snapshot], {
+    revalidate: 900,
+    tags: ["news"],
+  })();
 }
